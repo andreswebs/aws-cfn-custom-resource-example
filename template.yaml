@@ -1,0 +1,114 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Custom Resource Lambda
+
+Metadata:
+  Documentation:
+    - https://github.com/aws-cloudformation/aws-cloudformation-coverage-roadmap/issues/147
+
+  AWS::ServerlessRepo::Application:
+    Name: CustomResourceHelloWorld
+    Description: Creates a Hello World Custom Resource
+    Author: Andre Silva
+    SpdxLicenseId: Unlicense
+    ReadmeUrl: README.md
+    LicenseUrl: UNLICENSE.md
+    SemanticVersion: "0.0.1"
+    SourceCodeUrl: https://github.com/andreswebs/aws-cfn-custom-resource-example
+
+Globals:
+  Function:
+    Timeout: 300
+
+Parameters:
+
+  FunctionName:
+    Type: String
+    Description: Name of the lambda function
+    Default: ""
+
+  LogRetentionInDays:
+    Type: String
+    Description: (Optional) Log retention in days
+    Default: ""
+    AllowedValues: ["", 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+Conditions:
+  SetLogRetention: !Not [!Equals [!Ref LogRetentionInDays, ""]]
+  HasName: !Not [!Equals [!Ref FunctionName, ""]]
+
+Resources:
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !If [HasName, !Ref FunctionName, !Ref AWS::NoValue]
+      MemorySize: 1024
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: go1.x
+      Handler: main
+      CodeUri: src/
+
+  ########################
+  ## Dockerfile example
+  ########################
+  # FunctionFromImage:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     FunctionName: !If [HasName, !Ref FunctionName, !Ref AWS::NoValue]
+  #     MemorySize: 1024
+  #     Role: !GetAtt FunctionRole.Arn
+  #     Runtime: go1.x
+  #     PackageType: Image
+  #   Metadata:
+  #     DockerTag: go1.x
+  #     DockerContext: ./
+  #     Dockerfile: Dockerfile
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  FunctionPolicyLogs:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref FunctionRole
+      PolicyName: !Sub "${AWS::StackName}-logs"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Function}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Function}:*"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Function}:*:*"
+
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !If [SetLogRetention, !Ref LogRetentionInDays, !Ref AWS::NoValue]
+      LogGroupName: !Sub /aws/lambda/${Function}
+
+Outputs:
+  Function:
+    Description: Lambda function ARN
+    Value: !GetAtt Function.Arn
+    Export:
+      Name: !Ref AWS::StackName
+  FunctionIAMRole:
+    Description: Lambda function IAM Role
+    Value: !GetAtt FunctionRole.Arn
+  FunctionLogGroupName:
+    Description: Name of the Lambda function log group
+    Value: !Ref FunctionLogGroup
